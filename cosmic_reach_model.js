@@ -103,7 +103,6 @@ function sumArrays(a, b){
 					}
 				})
 
-                console.warn(texturesUsed)
                 for(let i = 0; i < texturesUsed.length; i++){
                     if(texturesUsed[i] == null){
                         continue
@@ -112,16 +111,35 @@ function sumArrays(a, b){
                     textures[name] = { "fileName": name }
                 }
 
-                return JSON.stringify({"textures": textures, "cuboids": cuboids}, undefined, 4)
+                return JSON.stringify({"textures": textures, "cuboids": cuboids})
             },
 
-            parse(rawJSONstring){
+            parse(rawJSONstring, path){
+                let loadedTextures = {}
+
+                let patharr = path.split(/[\\\/]/g)
+                patharr = patharr.slice(0, patharr.length - 1)
+
+                if(patharr.length > 1){
+                    patharr = [...patharr.slice(0, patharr.length - 2), "textures", patharr.pop()]
+                }
+
                 let facenamesbb = ["up", "down", "north", "south", "east", "west"]
                 let facenamescr = ["localPosY", "localNegY", "localNegZ", "localPosZ", "localPosX", "localNegX"]
 
                 let allTexturesSpecified = false
 
                 let data = JSON.parse(rawJSONstring)
+
+                for(let t of Object.keys(data.textures)){
+                    let newtexture = new Texture().fromPath([...patharr, data.textures[t].fileName].join("/"))
+                    loadedTextures[t] = newtexture.add()
+                }
+                
+                setTimeout(() => {
+                    Project.texture_width = Texture.all[0].width
+                    Project.texture_height = Texture.all[0].height
+                }, 50);
 
                 if(data.textures["all"] != undefined){
                     allTexturesSpecified = true
@@ -148,6 +166,7 @@ function sumArrays(a, b){
                     for(let i = 0; i < 6; i++){
                         try{
                             setUVforFace(cube, cuboid, facenamesbb[i], facenamescr[i])
+                            cube.faces[facenamesbb[i]].texture = loadedTextures[cuboid.faces[facenamescr[i]].texture]
                         }catch(error){
 
                         }
@@ -157,6 +176,10 @@ function sumArrays(a, b){
 
                     cube.addTo(Group.all.last()).init()
                 }
+                
+                setTimeout(() => {
+                    Canvas.updateAll()
+                }, 50);
             }
         })
 
@@ -174,7 +197,8 @@ function sumArrays(a, b){
                     resource_id: 'json'
                 }, files => {
                     try{
-                        codec.parse(files[0].content);
+                        codec.parse(files[0].content, files[0].path);
+                        Canvas.updateAll()
                     }catch(error){
                         dialog.lines = `<div>
                             <h1>Unable to import file.</h1>
