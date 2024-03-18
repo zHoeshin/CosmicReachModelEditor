@@ -111,7 +111,7 @@ function sumArrays(a, b){
                     textures[name] = { "fileName": name }
                 }
 
-                return JSON.stringify({"textures": textures, "cuboids": cuboids})
+                return JSON.stringify({"textures": textures, "cuboids": cuboids}, undefined, "\t")
             },
 
             parse(rawJSONstring, path){
