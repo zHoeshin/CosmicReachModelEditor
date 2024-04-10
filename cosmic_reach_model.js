@@ -21,6 +21,10 @@ function sumArrays(a, b){
       version: "1.0.0",
       creation_date: "2024-03-09",
       onload() {
+        Codecs.java_block.load_filter.condition = (model) => {
+			return (model.parent || model.elements || model.textures) && (!model.cuboids);
+		}
+
         dialog = new Dialog("cosmic_reach_model_errormessage", {
             id: "cosmic_reach_model_dialog",
             title: "Something went wrong...",
@@ -32,6 +36,35 @@ function sumArrays(a, b){
             name: "Cosmic Reach",
             extension: "json",
             remember: false,
+            load_filter: {type: "json", extensions: ["json"],
+              condition: (model) => {
+                  console.warn(model)
+                  return model.cuboids || model.textures;
+              }
+            },
+            format: new ModelFormat("cosmic_reach_model", {
+                id: "cosmic_reach_model",
+                icon: null,
+                name: "Cosmic Reach Model",
+                description: "Model format used by the game Cosmic Reach",
+                show_on_start_screen: true,
+                target: ["json"],
+    
+                vertex_color_ambient_occlusion: true,
+                /*rotate_cubes: true,
+                rotation_limit: true,
+                rotation_snap: true,*/
+                uv_rotation: true,
+                java_face_properties: true,
+                
+                edit_mode: true,
+    
+                new() {
+                    newProject(this)
+                    Project.texture_width = 16
+                    Project.texture_height = 16
+                }
+            }),
             compile(options={}){
                 let facenamesbb = ["up", "down", "north", "south", "east", "west"]
                 let facenamescr = ["localPosY", "localNegY", "localNegZ", "localPosZ", "localPosX", "localNegX"]
@@ -111,7 +144,7 @@ function sumArrays(a, b){
                     textures[name] = { "fileName": name }
                 }
 
-                return JSON.stringify({"textures": textures, "cuboids": cuboids}, undefined, "\t")
+                return JSON.stringify({"textures": textures, "cuboids": cuboids})
             },
 
             parse(rawJSONstring, path){
@@ -129,17 +162,22 @@ function sumArrays(a, b){
 
                 let allTexturesSpecified = false
 
-                let data = JSON.parse(rawJSONstring)
+                let data = rawJSONstring instanceof String ? JSON.parse(rawJSONstring) : rawJSONstring
 
+                if(data.textures == undefined){
+                    data.textures = {}
+                }
                 for(let t of Object.keys(data.textures)){
                     let newtexture = new Texture().fromPath([...patharr, data.textures[t].fileName].join("/"))
                     loadedTextures[t] = newtexture.add()
                 }
                 
-                setTimeout(() => {
-                    Project.texture_width = Texture.all[0].width
-                    Project.texture_height = Texture.all[0].height
-                }, 50);
+                if(Texture.all.length > 0) {
+                    setTimeout(() => {
+                        Project.texture_width = Texture.all[0].width
+                        Project.texture_height = Texture.all[0].height
+                    }, 50);
+                }
 
                 if(data.textures["all"] != undefined){
                     allTexturesSpecified = true
@@ -156,6 +194,10 @@ function sumArrays(a, b){
                                                 getFaceUV(cuboid, facenamecr, 2),
                                                 getFaceUV(cuboid, facenamecr, 3)]
                     cube.faces[facenamebb].texture = Texture.all.filter((x) => {return x.name == texture.fileName})[0]
+                }
+
+                if(data.cuboids == undefined){
+                    throw Error(`No cuboids found in file ${path}`)
                 }
 
                 for(let cuboid of data.cuboids){
@@ -180,6 +222,8 @@ function sumArrays(a, b){
                 setTimeout(() => {
                     Canvas.updateAll()
                 }, 50);
+
+                return true;
             }
         })
 
@@ -231,27 +275,7 @@ function sumArrays(a, b){
         MenuBar.addAction(import_action, 'file.import')
         MenuBar.addAction(export_action, 'file.export')
 
-        format = new ModelFormat("cosmic_reach_model", {
-            id: "cosmic_reach_model",
-            icon: null,
-            name: "Cosmic Reach Model",
-            description: "Model format used by the game Cosmic Reach",
-            show_on_start_screen: true,
-            target: ["json"],
-
-            vertex_color_ambient_occlusion: true,
-            /*rotate_cubes: true,
-            rotation_limit: true,
-            rotation_snap: true,*/
-            uv_rotation: true,
-            java_face_properties: true,
-
-            new() {
-                newProject(this)
-                Project.texture_width = 16
-                Project.texture_height = 16
-            }
-        })
+        
 
       },
       onunload() {
