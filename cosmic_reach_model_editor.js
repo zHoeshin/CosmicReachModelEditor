@@ -1,5 +1,5 @@
 (() => {
-    let codec, export_action_block_minimized, export_action_block_maximized, import_action_block, dialog, originalJavaBlockCond, lastOccuranceOfSequenceInArray
+    let codec, export_action_block_minimized, export_action_block_maximized, import_action_block, dialog, propertiesDialog, originalJavaBlockCond, lastOccuranceOfSequenceInArray
     const id = "cosmic_reach_model_editor"
     const name = "Cosmic Reach Model Editor"
     const icon = "icon.png"
@@ -10,7 +10,7 @@
       author: "Z. Hoeshin",
       description: "Allows creating, editing, importing and exporting Cosmic Reach block models.",
       tags: ["Cosmic Reach"],
-      version: "1.3.0",
+      version: "2.2.0",
       min_version: "4.8.0",
       creation_date: "2024-04-19",
       variant: "both",
@@ -18,6 +18,20 @@
       has_changelog: true,
       onload() {
 	originalJavaBlockCond = Codecs.java_block.load_filter.condition
+        const blockPropertiesForm = {
+            cullsSelf: {
+                label: "Culls Self",
+                type: "checkbox",
+                value: true
+            },
+            isTransparent: {
+                label: "Is transparent",
+                type: "checkbox",
+                value: false
+            }
+        }
+
+
         Codecs.java_block.load_filter.condition = (model) => {
 			return !model.cuboids && originalJavaBlockCond(model);
 		}
@@ -27,6 +41,17 @@
             title: "Something went wrong...",
             buttons: [],
             lines: [],
+        })
+
+        propertiesDialog = new Dialog("cosmic_reach_model_properties_dialog", {
+            id: "cosmic_reach_model_properties_dialog",
+            totle: "Properties",
+            lines: [],
+            onConfirm: (b, e) => {
+                let res = propertiesDialog.getFormResult()
+                Project.properties = res
+            },
+            onCancel: (b, e) => {},
         })
 
         codec = new Codec("cosmic_reach_block_model_codec", {
@@ -76,13 +101,27 @@
                     let uvs = {}
                     for(let f of Object.keys(obj.faces)){
                         let uv = obj.faces[f].uv
-
-                        let texture = Texture.all.filter((x) => {return x.uuid == obj.faces[f].texture})[0]
-                        texture = (texture === undefined) ? "empty.png" : texture.name
+                        
+                        let t = obj.faces[f].texture
+                        let textures = Texture.all.filter((x) => {
+                            if (x === undefined) {
+                                return false
+                            }
+                            if (t instanceof Texture) {
+                                return x.uuid == t.uuid
+                            }
+                            if (typeof(t) === 'string') {
+                                return x.uuid == t
+                            }
+                        })
+                        let texture = textures[0]
+                        //if (texture == undefined) console.error(obj.faces)
+                        if (texture !== undefined) texture = texture.name
+                        //texture = (texture === undefined) ? "empty.png" : texture.name
 
                         let face = obj.faces[f]
 
-                        uvs[f] = [uv[0], uv[1], uv[2], uv[3], face, texture]
+                        uvs[f] = [uv[0], uv[1], uv[2], uv[3], face.cullface, texture, face.rotation]
 
                         texturesUsed.push(texture)
                     }
@@ -91,7 +130,7 @@
                         "localBounds": [...obj.from, ...obj.to],
                         "faces":
                         {
-                            "localNegX": {"uv": uvs.west.slice(0, 4), "ambientocclusion": uvs.west[4].tint === 0,
+                            /*"localNegX": {"uv": uvs.west.slice(0, 4), "ambientocclusion": uvs.west[4].tint === 0,
                             "cullFace": uvs.west[4].cullFace !== "", "texture": uvs.west[5]},
                             "localPosX": {"uv": uvs.east.slice(0, 4), "ambientocclusion":  uvs.east[4].tint === 0,
                             "cullFace": uvs.east[4].cullFace !== "", "texture": uvs.east[5]},
@@ -104,7 +143,20 @@
                             "localNegZ": {"uv": uvs.north.slice(0, 4), "ambientocclusion":  uvs.north[4].tint === 0,
                             "cullFace": uvs.north[4].cullFace !== "", "texture": uvs.north[5]},
                             "localPosZ": {"uv": uvs.south.slice(0, 4), "ambientocclusion":  uvs.south[4].tint === 0,
-                            "cullFace": uvs.south[4].cullFace !== "", "texture": uvs.south[5]}
+                            "cullFace": uvs.south[4].cullFace !== "", "texture": uvs.south[5]}*/
+                        }
+                    }
+                    
+                    for(let i = 0; i < 6; i++){
+                        if ((uvs[facenamesbb[i]][5] === undefined) || (uvs[facenamesbb[i]][5] === "empty.png")){
+                            continue
+                        }
+                        cube.faces[facenamescr[i]] = {
+                            "uv": uvs[facenamesbb[i]].slice(0, 4),
+                            "ambientocclusion": uvs[facenamesbb[i]][4].tint === 0,
+                            "cullFace": uvs[facenamesbb[i]][4].length > 0,
+                            "texture": uvs[facenamesbb[i]][5],
+                            "uvRotation": uvs[facenamesbb[i]][6],
                         }
                     }
 
@@ -155,8 +207,16 @@
                 //JSON.stringify({"textures": textures, "cuboids": cuboids}, undefined, options.maximize ? 4 : undefined)
 
                 
-
-                  return stringifyJSON({"textures": textures, "cuboids": cuboids})
+                let r = {"textures": textures, "cuboids": cuboids}
+                if (Project.properties){
+                    if (Project.properties.isTransparent !== undefined){
+                        r.isTransparent = Project.properties.isTransparent
+                    }
+                    if (!Project.properties.cullsSelf !== undefined){
+                        r.cullsSelf = Project.properties.cullsSelf
+                    }
+                }
+                return stringifyJSON(r)
             },
 
             parse(rawJSONstring, path, cuboidsOnly = false){
@@ -187,7 +247,7 @@
                             return []
                         }else{
                             let p = data.parent
-                            Blockbench.read([...patharr.slice(undefined, root - 1), "models", "blocks", p + (/\.json$/gui.test(p) ? "" : ".json")].join("/"), {
+                            Blockbench.read([...patharr.slice(undefined, patharr.length - 3), p.replace(":", "/")].join("/"), {
                                 extensions: ['json'],
                                 type: 'Cosmic Reach Model',
                                 readtype: 'text',
@@ -218,7 +278,7 @@
                 }
 
                 for(let t of Object.keys(data.textures)){
-                    let newtexture = new Texture().fromPath([...patharr.slice(undefined, root - 1), "textures", "blocks", data.textures[t].fileName].join("/"))
+                    let newtexture = new Texture().fromPath([...patharr.slice(undefined, patharr.length - 3), data.textures[t].fileName.replace(":", "/")].join("/"))
                     newtexture.name = data.textures[t].fileName
                     loadedTextures[t] = newtexture.add()
                 }
@@ -235,7 +295,7 @@
                         throw Error(`No cuboids found in file ${path}`)
                     }else{
                         let p = data.parent
-                        Blockbench.read([...patharr.slice(undefined, root - 1), "models", "blocks", p + (/\.json$/gui.test(p) ? "" : ".json")].join("/"), {
+                        Blockbench.read([...patharr.slice(undefined, patharr.length - 3), p.replace(":", "/")].join("/"), {
                             extensions: ['json'],
                             type: 'Cosmic Reach Model',
                             readtype: 'text',
@@ -281,6 +341,7 @@
                                                 getFaceUV(cuboid, facenamecr, 1),
                                                 getFaceUV(cuboid, facenamecr, 2),
                                                 getFaceUV(cuboid, facenamecr, 3)]
+                    cube.faces[facenamebb].rotation = cuboid.faces[facenamecr]["uvRotation"] ?? 0
                     cube.faces[facenamebb].texture = Texture.all.filter((x) => {return x.name == texture.fileName})[0]
                 }
 
@@ -297,8 +358,12 @@
                         }catch(error){
                             
                         }
-                        cube.faces[facenamesbb[i]].cullface = cuboid.faces[facenamescr[i]].cullFace ? facenamesbb[i] : ""
-                        cube.faces[facenamesbb[i]].tint = cuboid.faces[facenamescr[i]].ambientocclusion ? 0 : -1
+                        if(cuboid.faces[facenamescr[i]] !== undefined){
+                            cube.faces[facenamesbb[i]].cullface = cuboid.faces[facenamescr[i]].cullFace ? facenamesbb[i] : ""
+                            cube.faces[facenamesbb[i]].tint = cuboid.faces[facenamescr[i]].ambientocclusion ? 0 : -1
+                        }else{
+                            cube.faces[facenamesbb[i]].enabled = false
+                        }
                     }
                     cube.addTo(Group.all.last()).init()
                 }
@@ -306,6 +371,15 @@
                 setTimeout(() => {
                     Canvas.updateAll()
                 }, 50);
+
+                properties = {isTransparent: false, cullsSelf: true}
+                if (data.isTransparent !== undefined){
+                    properties.isTransparent = data.isTransparent
+                }
+                if (data.cullsSelf !== undefined){
+                    properties.cullsSelf = data.cullsSelf
+                }
+                Project.properties = properties
 
                 return true;
             }
@@ -355,6 +429,7 @@
                     })
                     for(let bone_name of Object.keys(animation.bones)){
                         let bone = animation.bones[bone_name]
+                        if (!(bone_name in bones)) continue
                         let animator = animationobj.getBoneAnimator(bones[bone_name].self)
                         for(let channel_name of Object.keys(bone)){
                             let channel = bone[channel_name]
@@ -637,7 +712,7 @@
                     bones[bone.name] = {"self": group, "parent": bone.parent}
                 }
                 for(let bone of Object.keys(bones)){
-                    b = bones[bone]
+                    let b = bones[bone]
                     if(b.parent){
                         b.self.addTo(bones[b.parent].self)
                     }else{
@@ -647,6 +722,13 @@
 
                 let patharr = path.split(/[\\\/]/g)
 
+                let loadedTextures = {}
+                const b = patharr.slice(undefined, patharr.length - 4)
+                for(let t of Object.keys(data.textures ?? {})){
+                    let newtexture = new Texture().fromPath([...b, data.textures[t].replace(":", "/")].join("/"))
+                    newtexture.name = data.textures[t].fileName
+                    loadedTextures[t] = newtexture.add()
+                }
                 
                 //patharr = patharr.slice(0, patharr.length - 1)
 
@@ -720,7 +802,7 @@
                         ],
                         click() {
                             try{
-                                codec.export({maximize: false, parent: undefined});
+                                codec.export();
                             }catch(error){
                                 dialog.lines = `<div>
                                     <h1>Unable to export file.</h1>
@@ -737,7 +819,7 @@
                         category: 'file',
                         click() {
                             try{
-                                codec.export({maximize: true, parent: undefined});
+                                codec.export();
                             }catch(error){
                                 dialog.lines = `<div>
                                     <h1>Unable to export file.</h1>
@@ -752,7 +834,7 @@
                     ]),*/
                     click() {
                         try{
-                            codec.export({maximize: settings.cosmic_reach_maximize_block_models.value, parent: undefined});
+                            codec.export({parent: undefined});
                         }catch(error){
                             dialog.lines = `<div>
                                 <h1>Unable to export file.</h1>
@@ -780,7 +862,7 @@
                                         }
                                     },
                                     onConfirm: result => {
-                                        codec.export({maximize: settings.cosmic_reach_maximize_block_children_models.value, parent: result.name});
+                                        codec.export({parent: result.name});
                                     }
                                 }).show()
                             }catch(error){
@@ -811,16 +893,16 @@
                     readtype: 'text',
                     resource_id: 'json'
                 }, files => {
-                    /*try{*/
+                    try{
                         codec_entity.parse(files[0].content, files[0].path);
                         Canvas.updateAll()
-                    /*}catch(error){
+                    }catch(error){
                         dialog.lines = `<div>
                             <h1>Unable to import file.</h1>
                             <p>${error}</p>
                         </div>`.split("\n")
                         dialog.show()
-                    }*/
+                    }
                 })
             }
         })
@@ -837,7 +919,7 @@
                 side_menu: new Menu("export_cosmic_reach_entity_model_side_menu",[]),
                 click() {
                     try{
-                        codec_entity.export({maximize: true});
+                        codec_entity.export();
                     }catch(error){
                         dialog.lines = `<div>
                             <h1>Unable to export file.</h1>
@@ -854,7 +936,7 @@
                 side_menu: new Menu("export_cosmic_reach_entity_model_side_menu",[]),
                 click() {
                     try{
-                        codec_entity.export({maximize: false});
+                        codec_entity.export();
                     }catch(error){
                         dialog.lines = `<div>
                             <h1>Unable to export file.</h1>
@@ -866,7 +948,7 @@
             }),]),*/
             click() {
                 try{
-                    codec_entity.export({maximize: settings.cosmic_reach_maximize_entity_models.value});
+                    codec_entity.export();
                 }catch(error){
                     dialog.lines = `<div>
                         <h1>Unable to export file.</h1>
@@ -912,7 +994,7 @@
             category: 'file',
             click() {
                 try{
-                    codec_animation.export({maximize: settings.cosmic_reach_maximize_entity_animations.value});
+                    codec_animation.export();
                 }catch(error){
                     dialog.lines = `<div>
                         <h1>Unable to export file.</h1>
@@ -923,9 +1005,30 @@
             }
         })
 
+        show_properties_dialog = new Action("cosmic_reach_show_properties_dialog", {
+            id: "cosmic_reach_show_properties_dialog",
+            icon: icon64,
+            description: "",
+            name: "Edit model properties",
+            category: "Tools",
+            click() {
+                switch (Project.format.id){
+                    default:
+                        propertiesDialog.form = {}
+                        propertiesDialog.show()
+                    case "cosmic_reach_model":
+                        propertiesDialog.form = blockPropertiesForm
+                        propertiesDialog.show()
+                        propertiesDialog.setFormValues(Project.properties)
+                }
+            }
+        })
+
         
         MenuBar.addAction(import_action_entity_animation, 'file.import')
         MenuBar.addAction(export_action_entity_animation, 'file.export')
+
+        MenuBar.addAction(show_properties_dialog, 'tools')
 
         lastOccuranceOfSequenceInArray = (array, sequence) => {
             let count = 0
@@ -1033,6 +1136,8 @@
         import_action_entity_animation.delete();
         export_action_entity_animation.delete();
         Codecs.java_block.load_filter.condition = originalJavaBlockCond
+
+        show_properties_dialog.delete()
       }
     })
   })()
